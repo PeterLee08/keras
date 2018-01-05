@@ -7,9 +7,11 @@
 
 Adapted from code contributed by BigMoyan.
 """
-from __future__ import print_function
 from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
 
+import os
 import warnings
 
 from ..layers import Input
@@ -43,7 +45,7 @@ def identity_block(input_tensor, kernel_size, filters, stage, block):
     # Arguments
         input_tensor: input tensor
         kernel_size: default 3, the kernel size of middle conv layer at main path
-        filters: list of integers, the filterss of 3 conv layer at main path
+        filters: list of integers, the filters of 3 conv layer at main path
         stage: integer, current stage label, used for generating layer names
         block: 'a','b'..., current block label, used for generating layer names
 
@@ -81,7 +83,7 @@ def conv_block(input_tensor, kernel_size, filters, stage, block, strides=(2, 2))
     # Arguments
         input_tensor: input tensor
         kernel_size: default 3, the kernel size of middle conv layer at main path
-        filters: list of integers, the filterss of 3 conv layer at main path
+        filters: list of integers, the filters of 3 conv layer at main path
         stage: integer, current stage label, used for generating layer names
         block: 'a','b'..., current block label, used for generating layer names
 
@@ -130,7 +132,7 @@ def ResNet50(include_top=True, weights='imagenet',
     Optionally loads weights pre-trained
     on ImageNet. Note that when using TensorFlow,
     for best performance you should set
-    `image_data_format="channels_last"` in your Keras config
+    `image_data_format='channels_last'` in your Keras config
     at ~/.keras/keras.json.
 
     The model and the weights are compatible with both
@@ -141,8 +143,9 @@ def ResNet50(include_top=True, weights='imagenet',
     # Arguments
         include_top: whether to include the fully-connected
             layer at the top of the network.
-        weights: one of `None` (random initialization)
-            or "imagenet" (pre-training on ImageNet).
+        weights: one of `None` (random initialization),
+              'imagenet' (pre-training on ImageNet),
+              or the path to the weights file to be loaded.
         input_tensor: optional Keras tensor (i.e. output of `layers.Input()`)
             to use as image input for the model.
         input_shape: optional shape tuple, only to be specified
@@ -174,10 +177,11 @@ def ResNet50(include_top=True, weights='imagenet',
         ValueError: in case of invalid argument for `weights`,
             or invalid input shape.
     """
-    if weights not in {'imagenet', None}:
+    if not (weights in {'imagenet', None} or os.path.exists(weights)):
         raise ValueError('The `weights` argument should be either '
-                         '`None` (random initialization) or `imagenet` '
-                         '(pre-training on ImageNet).')
+                         '`None` (random initialization), `imagenet` '
+                         '(pre-training on ImageNet), '
+                         'or the path to the weights file to be loaded.')
 
     if weights == 'imagenet' and include_top and classes != 1000:
         raise ValueError('If using `weights` as imagenet with `include_top`'
@@ -188,7 +192,8 @@ def ResNet50(include_top=True, weights='imagenet',
                                       default_size=224,
                                       min_size=197,
                                       data_format=K.image_data_format(),
-                                      include_top=include_top)
+                                      require_flatten=include_top,
+                                      weights=weights)
 
     if input_tensor is None:
         img_input = Input(shape=input_shape)
@@ -278,4 +283,7 @@ def ResNet50(include_top=True, weights='imagenet',
                           '`image_data_format="channels_last"` in '
                           'your Keras config '
                           'at ~/.keras/keras.json.')
+    elif weights is not None:
+        model.load_weights(weights)
+
     return model

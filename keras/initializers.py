@@ -1,4 +1,7 @@
 from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import numpy as np
 import six
 from . import backend as K
@@ -18,6 +21,10 @@ class Initializer(object):
 
     @classmethod
     def from_config(cls, config):
+        if 'dtype' in config:
+            # Initializers saved from `tf.keras`
+            # may contain an unused `dtype` argument.
+            config.pop('dtype')
         return cls(**config)
 
 

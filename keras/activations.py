@@ -1,4 +1,7 @@
 from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import six
 import warnings
 from . import backend as K
@@ -39,6 +42,10 @@ def selu(x):
 
     # Arguments
         x: A tensor or variable to compute the activation function for.
+
+    # Note
+        - To be used together with the initialization "lecun_normal".
+        - To be used together with the dropout variant "AlphaDropout".
 
     # References
         - [Self-Normalizing Neural Networks](https://arxiv.org/abs/1706.02515)

@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
 
 from .. import backend as K
 from ..engine import Layer
@@ -456,7 +458,7 @@ class GlobalAveragePooling1D(_GlobalPooling1D):
 
     # Output shape
         2D tensor with shape:
-        `(batch_size, channels)`
+        `(batch_size, features)`
     """
 
     def call(self, inputs):
@@ -471,7 +473,7 @@ class GlobalMaxPooling1D(_GlobalPooling1D):
 
     # Output shape
         2D tensor with shape:
-        `(batch_size, channels)`
+        `(batch_size, features)`
     """
 
     def call(self, inputs):

@@ -1,4 +1,5 @@
 from __future__ import absolute_import
+from __future__ import division
 from __future__ import print_function
 
 import os
@@ -20,10 +21,6 @@ try:
     import requests
 except ImportError:
     requests = None
-
-if K.backend() == 'tensorflow':
-    import tensorflow as tf
-    from tensorflow.contrib.tensorboard.plugins import projector
 
 
 class CallbackList(object):
@@ -172,6 +169,7 @@ class Callback(object):
 
     def __init__(self):
         self.validation_data = None
+        self.model = None
 
     def set_params(self, params):
         self.params = params
@@ -228,7 +226,8 @@ class BaseLogger(Callback):
 
 
 class TerminateOnNaN(Callback):
-    """Callback that terminates training when a NaN loss is encountered."""
+    """Callback that terminates training when a NaN loss is encountered.
+    """
 
     def __init__(self):
         super(TerminateOnNaN, self).__init__()
@@ -248,7 +247,7 @@ class ProgbarLogger(Callback):
     # Arguments
         count_mode: One of "steps" or "samples".
             Whether the progress bar should
-            count samples seens or steps (batches) seen.
+            count samples seen or steps (batches) seen.
 
     # Raises
         ValueError: In case of invalid `count_mode`.
@@ -397,7 +396,7 @@ class ModelCheckpoint(Callback):
         self.epochs_since_last_save += 1
         if self.epochs_since_last_save >= self.period:
             self.epochs_since_last_save = 0
-            filepath = self.filepath.format(epoch=epoch, **logs)
+            filepath = self.filepath.format(epoch=epoch + 1, **logs)
             if self.save_best_only:
                 current = logs.get(self.monitor)
                 if current is None:
@@ -406,9 +405,9 @@ class ModelCheckpoint(Callback):
                 else:
                     if self.monitor_op(current, self.best):
                         if self.verbose > 0:
-                            print('Epoch %05d: %s improved from %0.5f to %0.5f,'
+                            print('\nEpoch %05d: %s improved from %0.5f to %0.5f,'
                                   ' saving model to %s'
-                                  % (epoch, self.monitor, self.best,
+                                  % (epoch + 1, self.monitor, self.best,
                                      current, filepath))
                         self.best = current
                         if self.save_weights_only:
@@ -417,11 +416,11 @@ class ModelCheckpoint(Callback):
                             self.model.save(filepath, overwrite=True)
                     else:
                         if self.verbose > 0:
-                            print('Epoch %05d: %s did not improve' %
-                                  (epoch, self.monitor))
+                            print('\nEpoch %05d: %s did not improve' %
+                                  (epoch + 1, self.monitor))
             else:
                 if self.verbose > 0:
-                    print('Epoch %05d: saving model to %s' % (epoch, filepath))
+                    print('\nEpoch %05d: saving model to %s' % (epoch + 1, filepath))
                 if self.save_weights_only:
                     self.model.save_weights(filepath, overwrite=True)
                 else:
@@ -462,7 +461,7 @@ class EarlyStopping(Callback):
 
         if mode not in ['auto', 'min', 'max']:
             warnings.warn('EarlyStopping mode %s is unknown, '
-                          'fallback to auto mode.' % (self.mode),
+                          'fallback to auto mode.' % mode,
                           RuntimeWarning)
             mode = 'auto'
 
@@ -471,7 +470,7 @@ class EarlyStopping(Callback):
         elif mode == 'max':
             self.monitor_op = np.greater
         else:
-            if 'acc' in self.monitor or self.monitor.startswith('fmeasure'):
+            if 'acc' in self.monitor:
                 self.monitor_op = np.greater
             else:
                 self.monitor_op = np.less
@@ -495,19 +494,19 @@ class EarlyStopping(Callback):
                 'which is not available. Available metrics are: %s' %
                 (self.monitor, ','.join(list(logs.keys()))), RuntimeWarning
             )
-
+            return
         if self.monitor_op(current - self.min_delta, self.best):
             self.best = current
             self.wait = 0
         else:
+            self.wait += 1
             if self.wait >= self.patience:
                 self.stopped_epoch = epoch
                 self.model.stop_training = True
-            self.wait += 1
 
     def on_train_end(self, logs=None):
         if self.stopped_epoch > 0 and self.verbose > 0:
-            print('Epoch %05d: early stopping' % (self.stopped_epoch))
+            print('Epoch %05d: early stopping' % (self.stopped_epoch + 1))
 
 
 class RemoteMonitor(Callback):
@@ -562,11 +561,13 @@ class LearningRateScheduler(Callback):
         schedule: a function that takes an epoch index as input
             (integer, indexed from 0) and returns a new
             learning rate as output (float).
+        verbose: int. 0: quiet, 1: update messages.
     """
 
-    def __init__(self, schedule):
+    def __init__(self, schedule, verbose=0):
         super(LearningRateScheduler, self).__init__()
         self.schedule = schedule
+        self.verbose = verbose
 
     def on_epoch_begin(self, epoch, logs=None):
         if not hasattr(self.model.optimizer, 'lr'):
@@ -576,6 +577,9 @@ class LearningRateScheduler(Callback):
             raise ValueError('The output of the "schedule" function '
                              'should be float.')
         K.set_value(self.model.optimizer.lr, lr)
+        if self.verbose > 0:
+            print('\nEpoch %05d: LearningRateScheduler reducing learning '
+                  'rate to %s.' % (epoch + 1, lr))
 
 
 class TensorBoard(Callback):
@@ -591,7 +595,7 @@ class TensorBoard(Callback):
 
     If you have installed TensorFlow with pip, you should be able
     to launch TensorBoard from the command line:
-    ```
+    ```sh
     tensorboard --logdir=/full_path_to_your_logs
     ```
 
@@ -635,6 +639,9 @@ class TensorBoard(Callback):
         if K.backend() != 'tensorflow':
             raise RuntimeError('TensorBoard callback only works '
                                'with the TensorFlow backend.')
+        global tf, projector
+        import tensorflow as tf
+        from tensorflow.contrib.tensorboard.plugins import projector
         self.log_dir = log_dir
         self.histogram_freq = histogram_freq
         self.merged = None
@@ -658,6 +665,12 @@ class TensorBoard(Callback):
                     if self.write_grads:
                         grads = model.optimizer.get_gradients(model.total_loss,
                                                               weight)
+
+                        def is_indexed_slices(grad):
+                            return type(grad).__name__ == 'IndexedSlices'
+                        grads = [
+                            grad.values if is_indexed_slices(grad) else grad
+                            for grad in grads]
                         tf.summary.histogram('{}_grad'.format(mapped_weight_name), grads)
                     if self.write_images:
                         w_img = tf.squeeze(weight)
@@ -741,6 +754,9 @@ class TensorBoard(Callback):
     def on_epoch_end(self, epoch, logs=None):
         logs = logs or {}
 
+        if not self.validation_data and self.histogram_freq:
+            raise ValueError('If printing histograms, validation_data must be '
+                             'provided, and cannot be a generator.')
         if self.validation_data and self.histogram_freq:
             if epoch % self.histogram_freq == 0:
 
@@ -864,7 +880,6 @@ class ReduceLROnPlateau(Callback):
             self.best = -np.Inf
         self.cooldown_counter = 0
         self.wait = 0
-        self.lr_epsilon = self.min_lr * 1e-4
 
     def on_train_begin(self, logs=None):
         self._reset()
@@ -891,12 +906,13 @@ class ReduceLROnPlateau(Callback):
             elif not self.in_cooldown():
                 if self.wait >= self.patience:
                     old_lr = float(K.get_value(self.model.optimizer.lr))
-                    if old_lr > self.min_lr + self.lr_epsilon:
+                    if old_lr > self.min_lr:
                         new_lr = old_lr * self.factor
                         new_lr = max(new_lr, self.min_lr)
                         K.set_value(self.model.optimizer.lr, new_lr)
                         if self.verbose > 0:
-                            print('\nEpoch %05d: reducing learning rate to %s.' % (epoch, new_lr))
+                            print('\nEpoch %05d: ReduceLROnPlateau reducing learning '
+                                  'rate to %s.' % (epoch + 1, new_lr))
                         self.cooldown_counter = self.cooldown
                         self.wait = 0
                 self.wait += 1
@@ -955,9 +971,14 @@ class CSVLogger(Callback):
             else:
                 return k
 
-        if not self.writer:
+        if self.keys is None:
             self.keys = sorted(logs.keys())
 
+        if self.model.stop_training:
+            # We set NA so that csv parsers do not fail for this last epoch.
+            logs = dict([(k, logs[k]) if k in logs else (k, 'NA') for k in self.keys])
+
+        if not self.writer:
             class CustomDialect(csv.excel):
                 delimiter = self.sep
 
